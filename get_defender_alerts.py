@@ -68,6 +68,8 @@ class TokenException(Exception):
 class WrongReasonException(Exception):
 	pass
 
+class MissingResource(Exception):
+	pass
 
 class MLStripper(HTMLParser):
     def __init__(self):
@@ -293,7 +295,7 @@ def get_defender_alerts(aadtoken):
 			logger.warning(f'{type(e)} {e} apiurl: {apiurl} json: {json_response}')
 			json_values = json_response
 		if len(json_values) == 0:
-			logger.warning(f'No alerts! jsonresp: {json_response}')
+			logger.warning(f'No alerts from defender securitycenter! jsonresp: {json_response}')
 		return json_values
 	elif response.status_code == 403:
 		json_err = json.loads(response.content)
@@ -413,7 +415,7 @@ def update_alert(aadtoken, alert_id):
 		return None
 
 
-def get_cloudapp_alerts(skip=0, limit=100, alertopen=True):
+def get_cloudapp_resource(resource, skip=0, limit=100, alertopen=True):
 	"""
 	Get list of alerts from Cloud app security portal
 	Params:
@@ -424,7 +426,23 @@ def get_cloudapp_alerts(skip=0, limit=100, alertopen=True):
 	# filters https://learn.microsoft.com/en-us/defender-cloud-apps/api-alerts#filters
 	token = os.environ.get('CLOUDAPPAPIKEY')
 	cloudappurl = os.environ.get('CLOUDAPPURL')
-	baseurl = f'https://{cloudappurl}/api/v1/alerts/'
+	if resource == 'alerts':
+		baseurl = f'https://{cloudappurl}/api/v1/alerts/'
+	elif resource == 'activities':
+		baseurl = f'https://{cloudappurl}/api/v1/activities/'
+	elif resource == 'discovery':
+		# todo fix
+		baseurl = f'https://{cloudappurl}/api/v1/discovery/'
+		# POST /api/v1/discovery/discovered_apps/categories/
+		# GET /api/discovery/streams/
+	elif resource == 'entities':
+		baseurl = f'https://{cloudappurl}/api/v1/entities/'
+	elif resource == 'files':
+		baseurl = f'https://{cloudappurl}/api/v1/files/'
+	elif resource == 'subnet':
+		baseurl = f'https://{cloudappurl}/api/v1/subnet/'
+	else:
+		raise MissingResource(f'Missing api resource item')
 	session = requests.Session()
 	session.headers.update(
 		{
@@ -434,31 +452,30 @@ def get_cloudapp_alerts(skip=0, limit=100, alertopen=True):
 		})
 	
 	data = {'Filters:':{'alertOpen':alertopen}, 'skip':skip, 'limit':limit}
-	try:
-		response = session.get(url=baseurl, json=data)
-	except HTTPError as e:
-		logger.error(f'{type(e)} {e} url = {baseurl}')
-	if response.status_code == 200:
-		json_response = json.loads(response.content)
-		logger.debug(f'respcontent = {len(response.content)} json_response={len(json_response)}')
+	records = []
+	hasnext = True
+	MAX_RECORDS = 500
+	while hasnext:
 		try:
-			json_values = json_response['data']
-		except KeyError as e:
-			logger.warning(f'{type(e)} {e} baseurl: {baseurl} json: {json_response}')
-			json_values = json_response
-		if len(json_values) == 0:
-			logger.warning(f'No alerts! jsonresp: {json_response}')
-		return json_values
-	elif response.status_code == 403:
-		json_err = json.loads(response.content)
-		logger.warning(f"responsecode={response.status_code} {json_err} base = {baseurl} apiurl={baseurl}")
-	elif response.status_code == 404:
-		#json_err = json.loads(response.content)
-		logger.error(f'notfound responsecode={response.status_code} response.content={response.content} base = {baseurl} apiurl={baseurl}')
-	else:
-		logger.error(f'unknown status responsecode={response.status_code} base = {baseurl} apiurl={baseurl}')
-	return None
-
+			response = session.get(url=baseurl, json=data)
+		except HTTPError as e:
+			logger.error(f'{type(e)} {e} url = {baseurl}')
+		if response.status_code == 200:
+			json_response = json.loads(response.content)
+			logger.debug(f'hasnext: {hasnext} respcontent = {len(response.content)} json_response={len(json_response)} records = {len(records)}')
+			try:
+				json_values = json_response.get('data', [])
+			except KeyError as e:
+				logger.warning(f'{type(e)} {e} baseurl: {baseurl} json: {json_response}')				
+			if len(json_values) == 0:
+				logger.warning(f'No alerts! jsonresp: {json_response}')
+			else:
+				records += json_values
+			hasnext = json_response.get('hasNext', False)
+			if len(records) >= MAX_RECORDS:
+				logger.warning(f'Reached MAX_RECORDS={MAX_RECORDS} records = {len(records)}')
+				hasnext = False
+	return records
 
 def get_cloudapp_alert(id):
 	"""
@@ -553,6 +570,7 @@ def update_cloudapp_alert(id, close_reason, reasonid, comment='defendercloudapir
 	logger.debug(f'[resp] {jsonresp}')
 	return jsonresp
 
+
 if __name__ == '__main__':
 	aadtoken = None
 	try:
@@ -561,7 +579,7 @@ if __name__ == '__main__':
 		logger.error(e)
 	if aadtoken:
 		defenderalerts = get_defender_alerts(aadtoken)
-		cloudapp_alerts = get_cloudapp_alerts(limit=100)
+		cloudapp_alerts = get_cloudapp_resource(resource='alerts', limit=100)
 		print(f'defenderalerts = {len(defenderalerts)} cloudappalerts = {len(cloudapp_alerts)}')
 		if len(defenderalerts) > 0:
 			[print(f"defender - date:{k.get('lastUpdateTime'):<30} id:{k.get('incidentId')} {k.get('id')} evidence:{len(k.get('evidence'))} title:{k.get('title')} ") for k in defenderalerts]
@@ -569,4 +587,4 @@ if __name__ == '__main__':
 			for alert in cloudapp_alerts:
 				# strip html tags from description text
 				alert['description'] = strip_tags(alert['description'])
-			[print(f'cloudapp - ts:{k.get("timestamp")} id:{k.get("_id")}\n\tt:{k.get("title")}\n\td:{k.get("description")}\n\tsv:{k.get("statusValue")} {k.get("resolutionStatusValue")} c:{k.get("comment")}') for k in cloudapp_alerts if k.get("title") != 'Activities from suspicious user agents']
+			[print(f'cloudapp - ts:{k.get("timestamp")} id:{k.get("_id")}\n\tt:{k.get("title")}\n\td:{k.get("description")}\n\tsv:{k.get("statusValue")} {k.get("resolutionStatusValue")} c:{k.get("comment")}') for k in cloudapp_alerts if k.get("title")]
