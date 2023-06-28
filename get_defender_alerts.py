@@ -415,13 +415,15 @@ def update_alert(aadtoken, alert_id):
 		return None
 
 
-def get_cloudapp_resource(resource, skip=0, limit=100, alertopen=True):
+def get_cloudapp_resource(resource, skip=0, limit=100, alertopen=True, resolutionStatus=0, resolution_status='open'):
 	"""
 	Get list of alerts from Cloud app security portal
 	Params:
 	skip: skip n items. Default 0.
-	limit: max items to fectch. Default 100.
+	limit: max items to fectch in each request. Default 100.
 	alertopen: True = fetch only open alerts, False = fetch both open and closed alerts. Default True.
+	resolutionStatus: 0 = open, 1 = dismissied, 2 = resolved, 3 falsepositive, 4 = benign, 5 = truepositive. default = 0
+	resolution_status: 0 = open, 1 = dismissed, 2 = resolved. default = open
 	"""
 	# filters https://learn.microsoft.com/en-us/defender-cloud-apps/api-alerts#filters
 	token = os.environ.get('CLOUDAPPAPIKEY')
@@ -450,14 +452,14 @@ def get_cloudapp_resource(resource, skip=0, limit=100, alertopen=True):
 			'Accept': 'application/json',
 			'Authorization': "token " + token
 		})
-	
-	data = {'Filters:':{'alertOpen':alertopen}, 'skip':skip, 'limit':limit}
+
+	data = {'filters': {'resolutionStatus': {'eq': resolutionStatus}}, 'skip': skip, 'limit': limit}
 	records = []
 	hasnext = True
 	MAX_RECORDS = 500
 	while hasnext:
 		try:
-			response = session.get(url=baseurl, json=data)
+			response = session.post(url=baseurl, json=data)
 		except HTTPError as e:
 			logger.error(f'{type(e)} {e} url = {baseurl}')
 		if response.status_code == 200:
