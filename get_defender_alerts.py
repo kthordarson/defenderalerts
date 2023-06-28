@@ -468,7 +468,7 @@ def get_cloudapp_resource(resource, skip=0, limit=100, alertopen=True, resolutio
 			try:
 				json_values = json_response.get('data', [])
 			except KeyError as e:
-				logger.warning(f'{type(e)} {e} baseurl: {baseurl} json: {json_response}')				
+				logger.warning(f'{type(e)} {e} baseurl: {baseurl} json: {json_response}')
 			if len(json_values) == 0:
 				logger.warning(f'No alerts! jsonresp: {json_response}')
 			else:
@@ -479,7 +479,7 @@ def get_cloudapp_resource(resource, skip=0, limit=100, alertopen=True, resolutio
 				hasnext = False
 	return records
 
-def get_cloudapp_alert(id):
+def get_cloudapp_alert(alert_id:str):
 	"""
 	Get single cloudapp security alert
 	Params:
@@ -487,7 +487,7 @@ def get_cloudapp_alert(id):
 	"""
 	token = os.environ.get('CLOUDAPPAPIKEY')
 	cloudappurl = os.environ.get('CLOUDAPPURL')
-	baseurl = f'https://{cloudappurl}/api/v1/alerts/{id}'
+	baseurl = f'https://{cloudappurl}/api/v1/alerts/{alert_id}'
 	session = requests.Session()
 	session.headers.update(
 		{
@@ -515,7 +515,7 @@ def get_cloudapp_alert(id):
 		logger.error(f'unknown status responsecode={response.status_code} base = {baseurl} apiurl={baseurl}')
 	return None
 
-def update_cloudapp_alert(id, close_reason, reasonid, comment='defendercloudapireasoncomment',):
+def update_cloudapp_alert(alert_id, close_reason, reasonid, comment='defendercloudapireasoncomment',):
 	"""
 	Update cloud app security alert
 	Params:
@@ -553,7 +553,7 @@ def update_cloudapp_alert(id, close_reason, reasonid, comment='defendercloudapir
 	data = {
 		'filters' :{
 			'id': {
-				'eq': [id]
+				'eq': [alert_id]
 			}
 		},
 		'comment':comment,
