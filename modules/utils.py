@@ -6,7 +6,7 @@ from io import BytesIO, StringIO
 from urllib.error import HTTPError
 import json
 
-from exceptions import TokenException
+from .exceptions import TokenException
 
 class MLStripper(HTMLParser):
     def __init__(self):

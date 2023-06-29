@@ -49,13 +49,15 @@ def main():
 	dal = []
 	cal = []
 	if args.defenderalerts:
-		dal = def_session.get_defender_data(api_item='alerts')
+		all_alerts += def_session.get_defender_data(api_item='alerts')
 	if args.cloudappalerts:
 		try:
-			cal = def_session.get_cloudapp_data(api_item='alerts')
+			all_alerts += def_session.get_cloudapp_data(api_item='alerts')
 		except TokenException as e:
-			logger.error(e)
-	print(f'dal: {len(dal)} cal: {len(cal)}')
+			logger.error(f'TokenException {e}')
+	print(f'all: {len(all_alerts)}')
+	for alert in all_alerts:
+		print(f'[A] {alert}')
 
 if __name__ == '__main__':
 	main()

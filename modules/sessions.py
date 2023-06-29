@@ -4,8 +4,9 @@ import json
 from urllib.error import HTTPError
 from loguru import logger
 
-from utils import get_aad_token
-from exceptions import * 
+from .utils import get_aad_token
+from .exceptions import * 
+
 
 class DefenderSesssion():
 	def __repr__(self):
@@ -15,7 +16,6 @@ class DefenderSesssion():
 		self.cloudappurl = os.environ.get('CLOUDAPPURL')
 		self.defender_session = self.get_defender_session()
 		self.cloudapp_session = self.get_clapp_session()
-		
 
 	def get_clapp_session(self):
 		token = os.environ.get('CLOUDAPPAPIKEY')
@@ -26,7 +26,7 @@ class DefenderSesssion():
 		{
 			'Content-Type': 'application/json',
 			'Accept': 'application/json',
-			'Authorization': "Bearer " + token
+			'Authorization': "token " + token
 		})
 		return session
 

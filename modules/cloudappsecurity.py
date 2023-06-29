@@ -4,7 +4,7 @@ from urllib.error import HTTPError
 import requests
 from loguru import logger
 
-from exceptions import *
+from .exceptions import *
 
 def get_cloudapp_resource(resource, skip=0, limit=100, alertopen=True, resolutionStatus=0, resolution_status='open'):
 	"""
