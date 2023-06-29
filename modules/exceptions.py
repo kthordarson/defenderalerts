@@ -1,3 +1,9 @@
+class MDATPException(Exception):
+	pass
+
+class CloudAppException(Exception):
+	pass
+
 class DefenderSessionException(Exception):
 	pass
 

@@ -3,48 +3,100 @@ import requests
 import json
 from urllib.error import HTTPError
 from loguru import logger
+from msticpy.data.data_providers import QueryProvider
 
 from .utils import get_aad_token
-from .exceptions import * 
+from .exceptions import DefenderSessionException, CloudAppException, TokenException, SchemaException, WrongReasonException, MissingResource, MDATPException
+resourceAppIdUri = 'https://api-eu.securitycenter.microsoft.com'
 
-
-class DefenderSesssion():
+class CustomSession():
 	def __repr__(self):
-		return f'DefenderSesssion()'
-
+		return f'CustomSession( data={len(self.data)} )'
 	def __init__(self):
-		self.cloudappurl = os.environ.get('CLOUDAPPURL')
-		self.defender_session = self.get_defender_session()
-		self.cloudapp_session = self.get_clapp_session()
+		self.session = self.get_session()
+		self.data = []
 
-	def get_clapp_session(self):
-		token = os.environ.get('CLOUDAPPAPIKEY')
-		if not token or not self.cloudappurl:
-			raise CloudAppException(f'Missing cloudappapikey or cloudappurl')
+	def get_session(self):
+		try:
+			token = get_aad_token()
+		except TokenException as e:
+			raise e
 		session = requests.Session()
 		session.headers.update(
 		{
 			'Content-Type': 'application/json',
 			'Accept': 'application/json',
-			'Authorization': "token " + token
+			'Authorization': "Bearer " + token,
+			'authorization_uri': resourceAppIdUri
 		})
 		return session
 
-	def get_defender_session(self):
+	def get_data(self, query='DeviceProcessEvents | limit 10'):
+		"""
+		:param query: query to run, default DeviceProcessEvents
+			DeviceFileEvents, DeviceProcessEvents, AlertInfo, AlertEvidence, DeviceNetworkEvents, DeviceLogonEvents, DeviceRegistryEvents
+			DeviceEvents, DeviceImageLoadEvents, IdentityLogonEvents, IdentityQueryEvents
+		:return: json data
+		"""
+		data = {
+			'Query': query,
+		}
+		url = 'https://api-eu.securitycenter.microsoft.com/api/advancedqueries/run'
+		jdata = json.dumps({ 'Query' : query }).encode("utf-8")
+		response = self.session.post(url, data=jdata)
+
+class MDATPSession():
+	def __repr__(self):
+		return f'MDATPSession( data={len(self.mdatp_data)} )'
+
+	def __init__(self):
+		self.mdatp = QueryProvider("MDATP")
+		self.mdatp_data = []
+
+	def get_data(self):
+		rawmdatp_data = None
+		logger.debug(f'[MDATP] getdata connected: {self.mdatp.connected}')
+		if not self.mdatp.connected:
+			try:
+				self.mdatp.connect()
+			except Exception as e:
+				raise MDATPException(e)
+		else:
+			try:
+				rawmdatp_data = self.mdatp.MDATP.list_alerts()
+				logger.debug(f'[MDATP] rawmdatp_data {type(rawmdatp_data)}')
+			except Exception as e:
+				raise MDATPException(e)
+			alertlist = json.loads(rawmdatp_data.to_json(orient="records"))
+			self.mdatp_data = alertlist
+			logger.debug(f'[MDATP] alertlist {len(self.mdatp_data)}')
+			return self.mdatp_data
+
+class DefenderSesssion():
+	def __repr__(self):
+		return f'DefenderSesssion( defender={len(self.defender_data)} )'
+
+	def __init__(self):
+		self.defender_session = self.get_session()
+		self.defender_data = []
+
+	def get_session(self):
 		try:
 			token = get_aad_token()
 		except TokenException as e:
 			raise DefenderSessionException(e)
 		session = requests.Session()
+
 		session.headers.update(
 		{
 			'Content-Type': 'application/json',
 			'Accept': 'application/json',
-			'Authorization': "Bearer " + token
+			'Authorization': "Bearer " + token,
+			'authorization_uri': resourceAppIdUri
 		})
 		return session
 
-	def get_defender_data(self, api_item:str='alerts', status:str='new'):
+	def get_data(self, api_item:str='alerts', status:str='new'):
 		"""
 		Get list of Alerts from Office365 defender
 		Params:
@@ -53,33 +105,54 @@ class DefenderSesssion():
 		severity: Filter by severity level. 'Informational' 'Low', 'Medium', 'High', Default 'High'
 		Returns: json object of alerts
 		"""
-		apiurl = f"https://api-eu.securitycenter.microsoft.com/api/{api_item}/?$filter=status+eq+'New'&$expand=evidence&top=100"
-		try:
-			response = self.defender_session.get(apiurl)
-		except HTTPError as e:
-			logger.error(f'{type(e)} {e} url = {apiurl}')
-		if response.status_code == 200:
-			json_response = json.loads(response.content)
-			logger.debug(f'respcontent = {len(response.content)} json_response={len(json_response)}')
+		apiurl = f"https://api-eu.securitycenter.microsoft.com/api/{api_item}/?$filter=status+eq+'{status}'&$expand=evidence&top=100"
+		hasnext = True
+		records = []
+		self.defender_data = []
+		while hasnext:
 			try:
-				json_values = json_response['value']
-			except KeyError as e:
-				logger.warning(f'{type(e)} {e} apiurl: {apiurl} json: {json_response}')
-				json_values = json_response
-			if len(json_values) == 0:
-				logger.warning(f'No alerts from defender securitycenter! jsonresp: {json_response}')
-			return json_values
-		elif response.status_code == 403:
-			json_err = json.loads(response.content)
-			logger.warning(f"responsecode={response.status_code} {json_err.get('error').get('code')} {json_err.get('error').get('message')} apiurl={apiurl}")
-		elif response.status_code == 404:
-			#json_err = json.loads(response.content)
-			logger.error(f'notfound responsecode={response.status_code} response.content={response.content} apiurl={apiurl}')
-		else:
-			logger.error(f'unknown status responsecode={response.status_code} apiurl={apiurl}')
-		return None
+				response = self.defender_session.get(apiurl)
+			except HTTPError as e:
+				errmsg = f'{type(e)} {e} url = {apiurl}'
+				raise DefenderSessionException(errmsg)
+			if response.status_code != 200:
+				logger.warning(f'Error: {response.status_code} text: {response.text}')
+				hasnext = False
+			if response.status_code == 200:
+				json_response = json.loads(response.content)
+				records += json_response['value']
+				self.defender_data += records
+				logger.debug(f'Getting defenderdata hn: {hasnext} r: {len(response.content)} jr: {len(json_response)} r: {len(records)} defender_data: {len(self.defender_data)}')
+				if not '@odata.nextLink' in json_response:
+					hasnext = False
+				else:
+					apiurl = json_response['@odata.nextLink']
+		return self.defender_data
 
-	def get_cloudapp_data(self, api_item:str='alerts', skip=0, limit=100, alertopen=True, resolutionStatus=0, resolution_status='open'):
+class CloudappsecuritySession():
+	def __repr__(self):
+		return f'CloudappsecuritySession( data={len(self.cloudapp_data)} )'
+
+	def __init__(self):
+		self.cloudappurl = os.environ.get('CLOUDAPPURL')
+		self.cloudapp_session = self.get_session()
+		self.cloudapp_data = []
+
+	def get_session(self):
+		token = os.environ.get('CLOUDAPPAPIKEY')
+		if not token or not self.cloudappurl:
+			raise CloudAppException(f'Missing cloudappapikey or cloudappurl')
+		session = requests.Session()
+		session.headers.update(
+		{
+			'Content-Type': 'application/json',
+			'Accept': 'application/json',
+			'Authorization': "token " + token,
+			'authorization_uri': resourceAppIdUri
+		})
+		return session
+
+	def get_data(self, api_item:str='alerts', skip=0, limit=100, alertopen=True, resolutionStatus=0, resolution_status='open'):
 		"""
 		Get list of alerts from Cloud app security portal
 		Params:
@@ -111,6 +184,7 @@ class DefenderSesssion():
 
 		data = {'filters': {'resolutionStatus': {'eq': resolutionStatus}}, 'skip': skip, 'limit': limit}
 		records = []
+		self.cloudapp_data = []
 		hasnext = True
 		MAX_RECORDS = 500
 		while hasnext:
@@ -125,7 +199,7 @@ class DefenderSesssion():
 				logger.warning(f'[!] RespError {response.status_code} {response.text}')
 			if response.status_code == 200:
 				json_response = json.loads(response.content)
-				logger.debug(f'hasnext: {hasnext} respcontent = {len(response.content)} json_response={len(json_response)} records = {len(records)}')
+				logger.debug(f'Getting cloudappdata hn: {hasnext} r: {len(response.content)} jr: {len(json_response)} r: {len(records)}')
 				try:
 					json_values = json_response.get('data', [])
 				except KeyError as e:
@@ -134,8 +208,9 @@ class DefenderSesssion():
 					logger.warning(f'No alerts! jsonresp: {json_response}')
 				else:
 					records += json_values
+					self.cloudapp_data += records
 				hasnext = json_response.get('hasNext', False)
 				if len(records) >= MAX_RECORDS:
 					logger.warning(f'Reached MAX_RECORDS={MAX_RECORDS} records = {len(records)}')
 					hasnext = False
-		return records
+		return self.cloudapp_data

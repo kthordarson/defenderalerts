@@ -46,8 +46,8 @@ def get_aad_token():
 		raise TokenException(f'Missing authinfo....')
 	url = f"https://login.microsoftonline.com/{TenantID}/oauth2/token"
 	resourceAppIdUri = 'https://api-eu.securitycenter.microsoft.com'
-	body = {'resource': resourceAppIdUri, 'client_id': AppID,
-			'client_secret': Value, 'grant_type': 'client_credentials'}
+	# 'authorization_uri': resourceAppIdUri
+	body = {'resource': resourceAppIdUri, 'authorization_uri': resourceAppIdUri, 'client_id': AppID, 'client_secret': Value, 'grant_type': 'client_credentials'}
 	data = urllib.parse.urlencode(body).encode("utf-8")
 	req = urllib.request.Request(url, data)
 	try:
