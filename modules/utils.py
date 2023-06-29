@@ -63,3 +63,22 @@ def get_aad_token():
 	logger.debug(f'got aadtoken: {len(aadToken)}')
 	return aadToken
 
+
+
+def oldmaintest():
+	aadtoken = None
+	try:
+		aadtoken = get_aad_token()
+	except TokenException as e:
+		logger.error(e)
+	if aadtoken:
+		defenderalerts = get_defender_alerts(aadtoken)
+		cloudapp_alerts = get_cloudapp_resource(resource='alerts', limit=100)
+		print(f'defenderalerts = {len(defenderalerts)} cloudappalerts = {len(cloudapp_alerts)}')
+		if len(defenderalerts) > 0:
+			[print(f"defender - date:{k.get('lastUpdateTime'):<30} id:{k.get('incidentId')} {k.get('id')} evidence:{len(k.get('evidence'))} title:{k.get('title')} ") for k in defenderalerts]
+		if len(cloudapp_alerts) > 0:
+			for alert in cloudapp_alerts:
+				# strip html tags from description text
+				alert['description'] = strip_tags(alert['description'])
+			[print(f'cloudapp - ts:{k.get("timestamp")} id:{k.get("_id")}\n\tt:{k.get("title")}\n\td:{k.get("description")}\n\tsv:{k.get("statusValue")} {k.get("resolutionStatusValue")} c:{k.get("comment")}') for k in cloudapp_alerts if k.get("title")]
