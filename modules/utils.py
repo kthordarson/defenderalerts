@@ -33,7 +33,7 @@ def strip_tags(html):
     return stripped.replace('\n','')
 
 
-def get_aad_token():
+def get_aad_token(resourceAppIdUri:str='https://api-eu.securitycenter.microsoft.com'):
 	"""
 	returns aadtoken
 	Must set enviorment variables with valid credentials for the registered azure enterprise application
@@ -45,7 +45,7 @@ def get_aad_token():
 	if not AppID or not TenantID or not Value or not SecretID:
 		raise TokenException(f'Missing authinfo....')
 	url = f"https://login.microsoftonline.com/{TenantID}/oauth2/token"
-	resourceAppIdUri = 'https://api-eu.securitycenter.microsoft.com'
+	
 	# 'authorization_uri': resourceAppIdUri
 	body = {'resource': resourceAppIdUri, 'authorization_uri': resourceAppIdUri, 'client_id': AppID, 'client_secret': Value, 'grant_type': 'client_credentials'}
 	data = urllib.parse.urlencode(body).encode("utf-8")

@@ -8,6 +8,8 @@ from msticpy.data.data_providers import QueryProvider
 from .utils import get_aad_token
 from .exceptions import DefenderSessionException, CloudAppException, TokenException, SchemaException, WrongReasonException, MissingResource, MDATPException
 resourceAppIdUri = 'https://api-eu.securitycenter.microsoft.com'
+import urllib3
+urllib3.disable_warnings()
 
 class CustomSession():
 	def __repr__(self):
@@ -30,6 +32,112 @@ class CustomSession():
 			'authorization_uri': resourceAppIdUri
 		})
 		return session
+
+	def get_data(self, query='DeviceProcessEvents | limit 10'):
+		"""
+		:param query: query to run, default DeviceProcessEvents
+			DeviceFileEvents, DeviceProcessEvents, AlertInfo, AlertEvidence, DeviceNetworkEvents, DeviceLogonEvents, DeviceRegistryEvents
+			DeviceEvents, DeviceImageLoadEvents, IdentityLogonEvents, IdentityQueryEvents
+		:return: json data
+		"""
+		data = {
+			'Query': query,
+		}
+		url = 'https://api-eu.securitycenter.microsoft.com/api/advancedqueries/run'
+		jdata = json.dumps({ 'Query' : query }).encode("utf-8")
+		response = self.session.post(url, data=jdata)
+
+class GraphSession():
+	# apps = json.loads(session.get('https://graph.microsoft.com/v1.0/applications').content)
+	# https://learn.microsoft.com/en-us/graph/api/security-list-alerts_v2?view=graph-rest-1.0&tabs=http
+	def __repr__(self):
+		return f'GraphSession( data={len(self.data)} )'
+	def __init__(self):
+		self.session = self.get_session()
+		self.data = []
+		self.baseurl = 'https://graph.microsoft.com'
+
+	def get_session(self):
+		try:
+			token = get_aad_token(resourceAppIdUri=self.baseurl)
+		except TokenException as e:
+			raise e
+		session = requests.Session()
+		session.headers.update(
+		{
+			'Content-Type': 'application/json',
+			'Accept': 'application/json',
+			'Authorization': "Bearer " + token
+		})
+		return session
+	
+	def runhunt(self, query):
+		# POST /security/runHuntingQuery
+		testq = {"Query": "DeviceProcessEvents | limit 2"}
+		url  = f"{self.baseurl}/security/runHuntingQuery"
+		response = self.session.post(url, json=testq)
+		return json.loads(response.content)['value']
+	
+	def get_data(self, item='alerts', top=10):
+		"""
+		item: alerts, alerts_v2, incidents
+		"""
+		url  = f"{self.baseurl}/v1.0/security/{item}?&$top={top}"
+		response = self.session.get(url)
+		return json.loads(response.content)['value']
+
+class FortiSession():
+	def __repr__(self):
+		return f'FortiSession({self.hostname}:{self.port} data={len(self.data)} )'
+
+	def __init__(self, hostname:str='', port:str='443'):
+		self.hostname = hostname or os.environ.get('fortiapiurl')
+		self.port = port or '443'
+		self.api_url = f'https://{self.hostname}:{self.port}/api/v1'
+		session = self.get_session()
+		self.data = []
+
+	def get_session(self):
+		session = requests.Session()
+		return session
+		# try:
+		# 	token = self.get_forti_sid()
+		# except TokenException as e:
+		# 	raise e
+
+		# self.session.headers.update(
+		# {
+		# 	'Content-Type': 'application/x-www-form-urlencoded',
+		# 	'Accept': '*/*',
+		# 	'Authorization': "Bearer " + token,
+		# 	'authorization_uri': resourceAppIdUri
+		# })
+		# return session
+
+	def get_forti_sid(self):
+		sid = 'None'
+		# POST https://<ip address>:<port>/fpc/api/login
+		fortiapiuser = os.environ.get('fortiapiuser', None)
+		fortiapipass = os.environ.get('fortiapipass', None)
+		# payload = {'user' : fortiapiuser,'password' : fortiapipass			}
+		self.session.headers.update(
+		{
+			'Content-Type': 'application/x-www-form-urlencoded',
+			'Accept': '*/*'
+		})
+		execparams = [ { 'url': 'sys/login/user', 'data': [ { 'passwd': fortiapipass, 'user': fortiapiuser } ] } ]  
+		# method = 'exec'
+		# _reqid = '0'
+		# _sid = 'sidxxx'
+		# params = [{"url": "/sys/login/user", "data": [{"passwd": passwd, "user": user}]}]
+		# datagram = {"id": _reqid,"jsonrpc": "1.0","session": _sid,"method": method,"params": params,}
+		# headers = {"content-type": "application/json"}
+		# data = json.dumps(datagram)
+		payloadx = {'id':0, 'jsonrpc':'2.0','session' : None,'method': 'exec','params': [{'url': '/sys/login/user', 'data': {'passwd': fortiapiuser, 'user': fortiapipass} } ]}
+		payloadxx =  {'id':0, 'jsonrpc':'2.0','session' : None,'method': 'exec','params': {'url':  '/sys/login/user', 'data': {'passwd': fortiapiuser, 'user': fortiapipass} } }
+		payload =  {'id':0, 'jsonrpc':'2.0','session' : None,'method': 'exec','params': execparams}
+		response = self.session.post(f'{self.hostname}/jsonrpc', json=payload)
+		return sid
 
 	def get_data(self, query='DeviceProcessEvents | limit 10'):
 		"""
@@ -96,7 +204,7 @@ class DefenderSesssion():
 		})
 		return session
 
-	def get_data(self, api_item:str='alerts', status:str='new'):
+	def get_data(self, api_item:str='alerts', status:str='new', severity:str='High'):
 		"""
 		Get list of Alerts from Office365 defender
 		Params:
@@ -105,6 +213,8 @@ class DefenderSesssion():
 		severity: Filter by severity level. 'Informational' 'Low', 'Medium', 'High', Default 'High'
 		Returns: json object of alerts
 		"""
+		# apiurl = f"{baseurl}Alerts?$filter=severity+eq+'{severity}' # &$filter=alertCreationTime+ge+{filterTime}"
+		filterq = f'{api_item}?$filter=Status eq {status} and Severity eq {severity}'
 		apiurl = f"https://api-eu.securitycenter.microsoft.com/api/{api_item}/?$filter=status+eq+'{status}'&$expand=evidence&top=100"
 		hasnext = True
 		records = []
