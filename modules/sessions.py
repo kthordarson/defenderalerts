@@ -7,14 +7,15 @@ from msticpy.data.data_providers import QueryProvider
 
 from .utils import get_aad_token
 from .exceptions import DefenderSessionException, CloudAppException, TokenException, SchemaException, WrongReasonException, MissingResource, MDATPException
-resourceAppIdUri = 'https://api-eu.securitycenter.microsoft.com'
+from .constants import RESOURCEAPPIDURI, GRAPHBASEURL
 import urllib3
 urllib3.disable_warnings()
 
 class CustomSession():
 	def __repr__(self):
 		return f'CustomSession( data={len(self.data)} )'
-	def __init__(self):
+	def __init__(self, base_url:str=RESOURCEAPPIDURI):
+		self.base_url = base_url
 		self.session = self.get_session()
 		self.data = []
 
@@ -43,7 +44,7 @@ class CustomSession():
 		data = {
 			'Query': query,
 		}
-		url = 'https://api-eu.securitycenter.microsoft.com/api/advancedqueries/run'
+		url = f'{self.base_url}/api/advancedqueries/run'
 		jdata = json.dumps({ 'Query' : query }).encode("utf-8")
 		response = self.session.post(url, data=jdata)
 
@@ -55,7 +56,7 @@ class GraphSession():
 	def __init__(self):
 		self.session = self.get_session()
 		self.data = []
-		self.baseurl = 'https://graph.microsoft.com'
+		self.baseurl = GRAPHBASEURL
 
 	def get_session(self):
 		try:
@@ -70,19 +71,31 @@ class GraphSession():
 			'Authorization': "Bearer " + token
 		})
 		return session
-	
+
 	def runhunt(self, query):
 		# POST /security/runHuntingQuery
 		testq = {"Query": "DeviceProcessEvents | limit 2"}
 		url  = f"{self.baseurl}/security/runHuntingQuery"
 		response = self.session.post(url, json=testq)
 		return json.loads(response.content)['value']
-	
-	def get_data(self, item='alerts', top=10):
+
+	def get_alerts(self, item='alerts', top=10):
 		"""
 		item: alerts, alerts_v2, incidents
 		"""
 		url  = f"{self.baseurl}/v1.0/security/{item}?&$top={top}"
+		response = self.session.get(url)
+		return json.loads(response.content)['value']
+
+	def list_alerts_v2(self, top=10):
+		# GET https://graph.microsoft.com/v1.0/security/alerts_v2
+		url  = f"{self.baseurl}/v1.0/security/alerts_v2?&$top={top}"
+		response = self.session.get(url)
+		return json.loads(response.content)['value']
+
+	def list_incidents(self, top=10):
+		# GET https://graph.microsoft.com/v1.0/security/alerts_v2
+		url  = f"{self.baseurl}/v1.0/security/incidents?&$top={top}"
 		response = self.session.get(url)
 		return json.loads(response.content)['value']
 
@@ -125,7 +138,7 @@ class FortiSession():
 			'Content-Type': 'application/x-www-form-urlencoded',
 			'Accept': '*/*'
 		})
-		execparams = [ { 'url': 'sys/login/user', 'data': [ { 'passwd': fortiapipass, 'user': fortiapiuser } ] } ]  
+		execparams = [ { 'url': 'sys/login/user', 'data': [ { 'passwd': fortiapipass, 'user': fortiapiuser } ] } ]
 		# method = 'exec'
 		# _reqid = '0'
 		# _sid = 'sidxxx'
@@ -149,7 +162,7 @@ class FortiSession():
 		data = {
 			'Query': query,
 		}
-		url = 'https://api-eu.securitycenter.microsoft.com/api/advancedqueries/run'
+		url = f'https://{RESOURCEAPPIDURI}/api/advancedqueries/run'
 		jdata = json.dumps({ 'Query' : query }).encode("utf-8")
 		response = self.session.post(url, data=jdata)
 
@@ -190,7 +203,7 @@ class DefenderSesssion():
 
 	def get_session(self):
 		try:
-			token = get_aad_token()
+			token = get_aad_token(resourceAppIdUri=RESOURCEAPPIDURI)
 		except TokenException as e:
 			raise DefenderSessionException(e)
 		session = requests.Session()
@@ -215,7 +228,7 @@ class DefenderSesssion():
 		"""
 		# apiurl = f"{baseurl}Alerts?$filter=severity+eq+'{severity}' # &$filter=alertCreationTime+ge+{filterTime}"
 		filterq = f'{api_item}?$filter=Status eq {status} and Severity eq {severity}'
-		apiurl = f"https://api-eu.securitycenter.microsoft.com/api/{api_item}/?$filter=status+eq+'{status}'&$expand=evidence&top=100"
+		apiurl = f"https://{RESOURCEAPPIDURI}/api/{api_item}/?$filter=status+eq+'{status}'&$expand=evidence&top=100"
 		hasnext = True
 		records = []
 		self.defender_data = []

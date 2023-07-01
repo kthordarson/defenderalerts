@@ -4,6 +4,7 @@ import requests
 from datetime import datetime, timedelta
 from loguru import logger
 
+from .constants import RESOURCEAPPIDURI
 
 def get_indicators(aadtoken, severity='High'):
 	"""
@@ -25,7 +26,7 @@ def get_indicators(aadtoken, severity='High'):
 	filterTime = filterTime.strftime("%Y-%m-%dT%H:%M:%SZ")
 	# url = "https://api.securitycenter.microsoft.com/api/alerts?$filter=alertCreationTime+ge+{}".format(filterTime)
 	# url = "https://api.securitycenter.microsoft.com/api/machines?$filter=riskScore+eq+'High'
-	baseurl = "https://api-eu.securitycenter.microsoft.com/api/"
+	baseurl = f"{RESOURCEAPPIDURI}/api/"
 	# apiurl = f"{baseurl}Alerts?$filter=severity+eq+'{severity}' # &$filter=alertCreationTime+ge+{filterTime}"
 	apiurl = f"{baseurl}Indicators"
 	try:
@@ -74,7 +75,7 @@ def get_Vulnerabilities(aadtoken):
 	filterTime = filterTime.strftime("%Y-%m-%dT%H:%M:%SZ")
 	# url = "https://api.securitycenter.microsoft.com/api/alerts?$filter=alertCreationTime+ge+{}".format(filterTime)
 	# url = "https://api.securitycenter.microsoft.com/api/machines?$filter=riskScore+eq+'High'
-	baseurl = "https://api-eu.securitycenter.microsoft.com/api/"
+	baseurl = f"{RESOURCEAPPIDURI}/api/"
 	# apiurl = f"{baseurl}Alerts?$filter=severity+eq+'{severity}' # &$filter=alertCreationTime+ge+{filterTime}"
 	apiurl = f"{baseurl}Vulnerabilities"
 	try:
@@ -120,7 +121,7 @@ def get_defender_data(aadtoken, api_item):
 	# filterTime = filterTime.strftime("%Y-%m-%dT%H:%M:%SZ")
 	# url = "https://api.securitycenter.microsoft.com/api/alerts?$filter=alertCreationTime+ge+{}".format(filterTime)
 	# url = "https://api.securitycenter.microsoft.com/api/machines?$filter=riskScore+eq+'High'
-	baseurl = "https://api-eu.securitycenter.microsoft.com/api/"
+	baseurl = f"{RESOURCEAPPIDURI}/api/"
 	# apiurl = f"{baseurl}Alerts?$filter=severity+eq+'{severity}' # &$filter=alertCreationTime+ge+{filterTime}"
 	apiurl = f"{baseurl}{api_item}"
 	try:
@@ -162,7 +163,7 @@ def get_defender_alerts(aadtoken):
 			'Accept': 'application/json',
 			'Authorization': "Bearer " + aadtoken
 		})
-	baseurl = "https://api-eu.securitycenter.microsoft.com/api/alerts/"
+	baseurl = f"{RESOURCEAPPIDURI}/api/alerts/"
 	# apiurl = f"{baseurl}{api_item}?top=10&$expand=evidence"
 	#apiurl = f"{baseurl}?$filter=status+eq+'New'&$expand=evidence&top=100"
 	apiurl = f"{baseurl}?$filter=status+eq+'New'&$expand=evidence&top=100"
@@ -206,7 +207,7 @@ def get_defender_alert(aadtoken, alert_id):
 			'Accept': 'application/json',
 			'Authorization': "Bearer " + aadtoken
 		})
-	baseurl = "https://api-eu.securitycenter.microsoft.com/api/alerts/"
+	baseurl = f"{RESOURCEAPPIDURI}/api/alerts/"
 	apiurl = f"{baseurl}{alert_id}"
 	try:
 		response = session.get(apiurl)
@@ -266,7 +267,7 @@ def update_alert(aadtoken, alert_id):
 			'Accept': 'application/json',
 			'Authorization': "Bearer " + aadtoken
 		})
-	baseurl = "https://api-eu.securitycenter.microsoft.com/api/alerts"
+	baseurl = f"{RESOURCEAPPIDURI}/api/alerts"
 	# apiurl = f"{baseurl}{api_item}?top=10&$expand=evidence"
 	apiurl = f"{baseurl}/{alert_id}"
 	jsondata = {

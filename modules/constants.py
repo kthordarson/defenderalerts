@@ -1,3 +1,6 @@
+RESOURCEAPPIDURI = 'RESOURCEAPPIDURI'
+GRAPHBASEURL = 'https://graph.microsoft.com'
+LOGINURL = 'https://login.microsoftonline.com'
 DEVICE_SCHEMAS = ['DeviceInfo', 'DeviceNetworkInfo', 'DeviceProcessEvents', 'DeviceNetworkEvents', 'DeviceFileEvents',
 				  'DeviceRegistryEvents', 'DeviceLogonEvents', 'DeviceImageLoadEvents', 'DeviceEvents', 'DeviceFileCertificateInfo']
 EMAIL_SCHEMAS = ['EmailEvents', 'EmailAttachmentInfo',
