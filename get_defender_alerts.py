@@ -20,31 +20,33 @@ def main():
 	all_alerts = []
 	dal = []
 	cal = []
-
+	defender = None
+	cloudapp = None
+	mdatp = None
 	if args.defenderalerts:
-		try:
-			defender = DefenderSesssion()
-			all_alerts += defender.get_data(api_item='alerts')
+		defender = DefenderSesssion()
+		try:			
+			dres = defender.get_data(api_item='alerts')
 		except DefenderSessionException as e:
-			logger.error(f'DefenderSessionException {e}')
+			logger.error(f'{e} {defender}')
 
 	if args.cloudappalerts:
-		try:
-			cloudapp = CloudappsecuritySession()
-			all_alerts += cloudapp.get_data(api_item='alerts')
+		cloudapp = CloudappsecuritySession()
+		try:			
+			clres = cloudapp.get_data(api_item='alerts')
 		except CloudAppException as e:
-			logger.error(f'CloudAppException {e}')
+			logger.error(f'{e} {cloudapp}')
 
 	if args.mdatpalerts:
-		try:
-			mdatp = MDATPSession()
-			all_alerts += mdatp.get_data(api_item='alerts')
-		except MD as e:
-			logger.error(e)
+		mdatp = MDATPSession()
+		try:			
+			mdres = mdatp.get_data(api_item='alerts')
+		except MDATPException as e:
+			logger.error(f'{e} {mdatp}')
 		except MDATPException as e:
 			logger.error(f'MDATPException {e}')
 
-	print(f'all: {len(all_alerts)}')
+	print(f'defender: {defender} cloudapp: {cloudapp} mdatp: {mdatp}')
 	for alert in all_alerts:
 		print(f'[A] {alert}')
 

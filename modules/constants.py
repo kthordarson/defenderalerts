@@ -1,3 +1,5 @@
+MAX_RECORDS = 500
+RESOURCEAPPIDURI = 'https://api-eu.securitycenter.microsoft.com'
 DEVICE_SCHEMAS = ['DeviceInfo', 'DeviceNetworkInfo', 'DeviceProcessEvents', 'DeviceNetworkEvents', 'DeviceFileEvents',
 				  'DeviceRegistryEvents', 'DeviceLogonEvents', 'DeviceImageLoadEvents', 'DeviceEvents', 'DeviceFileCertificateInfo']
 EMAIL_SCHEMAS = ['EmailEvents', 'EmailAttachmentInfo',

@@ -7,7 +7,7 @@ from urllib.error import HTTPError
 import json
 
 from .exceptions import TokenException
-
+from .constants import RESOURCEAPPIDURI
 class MLStripper(HTMLParser):
     def __init__(self):
         super().__init__()
@@ -33,7 +33,7 @@ def strip_tags(html):
     return stripped.replace('\n','')
 
 
-def get_aad_token(resourceAppIdUri:str='https://api-eu.securitycenter.microsoft.com'):
+def get_aad_token(AppIdUri:str=RESOURCEAPPIDURI):
 	"""
 	returns aadtoken
 	Must set enviorment variables with valid credentials for the registered azure enterprise application
@@ -46,8 +46,7 @@ def get_aad_token(resourceAppIdUri:str='https://api-eu.securitycenter.microsoft.
 		raise TokenException(f'Missing authinfo....')
 	url = f"https://login.microsoftonline.com/{TenantID}/oauth2/token"
 	
-	# 'authorization_uri': resourceAppIdUri
-	body = {'resource': resourceAppIdUri, 'authorization_uri': resourceAppIdUri, 'client_id': AppID, 'client_secret': Value, 'grant_type': 'client_credentials'}
+	body = {'resource': AppIdUri, 'authorization_uri': AppIdUri, 'client_id': AppID, 'client_secret': Value, 'grant_type': 'client_credentials'}
 	data = urllib.parse.urlencode(body).encode("utf-8")
 	req = urllib.request.Request(url, data)
 	try:
@@ -60,25 +59,6 @@ def get_aad_token(resourceAppIdUri:str='https://api-eu.securitycenter.microsoft.
 		raise TokenException(f'Unhandled Exception {e} appid:{AppID} tid:{TenantID} v:{Value} s:{SecretID}')
 	jsonResponse = json.loads(response.read())
 	aadToken = jsonResponse["access_token"]
-	logger.debug(f'got aadtoken: {len(aadToken)}')
+	logger.info(f'got aadtoken: {len(aadToken)} AppIdUri:{AppIdUri}')
 	return aadToken
 
-
-
-def oldmaintest():
-	aadtoken = None
-	try:
-		aadtoken = get_aad_token()
-	except TokenException as e:
-		logger.error(e)
-	if aadtoken:
-		defenderalerts = get_defender_alerts(aadtoken)
-		cloudapp_alerts = get_cloudapp_resource(resource='alerts', limit=100)
-		print(f'defenderalerts = {len(defenderalerts)} cloudappalerts = {len(cloudapp_alerts)}')
-		if len(defenderalerts) > 0:
-			[print(f"defender - date:{k.get('lastUpdateTime'):<30} id:{k.get('incidentId')} {k.get('id')} evidence:{len(k.get('evidence'))} title:{k.get('title')} ") for k in defenderalerts]
-		if len(cloudapp_alerts) > 0:
-			for alert in cloudapp_alerts:
-				# strip html tags from description text
-				alert['description'] = strip_tags(alert['description'])
-			[print(f'cloudapp - ts:{k.get("timestamp")} id:{k.get("_id")}\n\tt:{k.get("title")}\n\td:{k.get("description")}\n\tsv:{k.get("statusValue")} {k.get("resolutionStatusValue")} c:{k.get("comment")}') for k in cloudapp_alerts if k.get("title")]
