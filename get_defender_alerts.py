@@ -7,7 +7,7 @@ from loguru import logger
 import argparse
 
 from modules.exceptions import DefenderSessionException, CloudAppException, TokenException, SchemaException, WrongReasonException, MissingResource, MDATPException
-from modules.sessions import DefenderSesssion, CloudappsecuritySession, MDATPSession
+from modules.sessions import DefenderSesssion, CloudappsecuritySession, GraphSession, QuerySession
 
 def main():
 	argsp = argparse.ArgumentParser(description='defenderapitool')
@@ -26,7 +26,7 @@ def main():
 	if args.defenderalerts:
 		defender = DefenderSesssion()
 		try:			
-			dres = defender.get_data(api_item='alerts')
+			dres = defender.get_incidents()
 		except DefenderSessionException as e:
 			logger.error(f'{e} {defender}')
 
@@ -38,7 +38,7 @@ def main():
 			logger.error(f'{e} {cloudapp}')
 
 	if args.mdatpalerts:
-		mdatp = MDATPSession()
+		mdatp = QuerySession(name='MDATP')
 		try:			
 			mdres = mdatp.get_data(api_item='alerts')
 		except MDATPException as e:

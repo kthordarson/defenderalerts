@@ -1,5 +1,6 @@
 import os
 import requests
+from requests import TooManyRedirects
 import json
 from urllib.error import HTTPError
 from loguru import logger
@@ -7,7 +8,7 @@ import urllib3
 
 from msticpy.data.data_providers import QueryProvider
 
-from .utils import get_aad_token
+from .utils import get_aad_token, get_aad_session
 from .exceptions import DefenderSessionException, CloudAppException, TokenException, SchemaException, WrongReasonException, MissingResource, MDATPException
 from .constants import RESOURCEAPPIDURI, MAX_RECORDS
 
@@ -29,8 +30,7 @@ class BaseSesssion():
 class CustomSession(BaseSesssion):
 	def __init__(self, name):
 		super().__init__(self)
-		self.name = name
-		
+		self.name = name		
 
 	def update_session_token(self, uri=RESOURCEAPPIDURI):
 		try:
@@ -65,9 +65,9 @@ class GraphSession():
 	def __repr__(self):
 		return f'GraphSession( data={len(self.data)} )'
 	def __init__(self):
+		self.baseurl = 'https://graph.microsoft.com'
 		self.session = self.get_session()
 		self.data = []
-		self.baseurl = 'https://graph.microsoft.com'
 
 	def get_session(self):
 		try:
@@ -90,13 +90,21 @@ class GraphSession():
 		response = self.session.post(url, json=testq)
 		return json.loads(response.content)['value']
 	
-	def get_data(self, item='alerts', top=10):
+	def get_data(self, item='alerts', status='newAlert', top=10, skip=0, limit=10):
 		"""
 		item: alerts, alerts_v2, incidents
 		"""
-		url  = f"{self.baseurl}/v1.0/security/{item}?&$top={top}"
+		# data = {'filters': {'status': {'eq': status}}, 'skip': skip, 'limit': limit}
+		# url  = f"{self.baseurl}/v1.0/security/{item}?&$top={top}"
+		url  = f"{self.baseurl}/v1.0/security/{item}?$filter=status+eq+'{status}'"
 		response = self.session.get(url)
-		return json.loads(response.content)['value']
+		logger.debug(f'{self} {url} resp: {response.status_code}')
+		try:
+			value = json.loads(response.content)['value']
+		except KeyError as e:
+			logger.error(f'{self} {e} resp: {response.status_code} {response.text}')
+			value = {}
+		return value
 
 class FortiSession():
 	def __repr__(self):
@@ -112,19 +120,6 @@ class FortiSession():
 	def get_session(self):
 		session = requests.Session()
 		return session
-		# try:
-		# 	token = self.get_forti_sid()
-		# except TokenException as e:
-		# 	raise e
-
-		# self.session.headers.update(
-		# {
-		# 	'Content-Type': 'application/x-www-form-urlencoded',
-		# 	'Accept': '*/*',
-		# 	'Authorization': "Bearer " + token,
-		# 	'authorization_uri': resourceAppIdUri
-		# })
-		# return session
 
 	def get_forti_sid(self):
 		sid = 'None'
@@ -138,13 +133,6 @@ class FortiSession():
 			'Accept': '*/*'
 		})
 		execparams = [ { 'url': 'sys/login/user', 'data': [ { 'passwd': fortiapipass, 'user': fortiapiuser } ] } ]  
-		# method = 'exec'
-		# _reqid = '0'
-		# _sid = 'sidxxx'
-		# params = [{"url": "/sys/login/user", "data": [{"passwd": passwd, "user": user}]}]
-		# datagram = {"id": _reqid,"jsonrpc": "1.0","session": _sid,"method": method,"params": params,}
-		# headers = {"content-type": "application/json"}
-		# data = json.dumps(datagram)
 		payloadx = {'id':0, 'jsonrpc':'2.0','session' : None,'method': 'exec','params': [{'url': '/sys/login/user', 'data': {'passwd': fortiapiuser, 'user': fortiapipass} } ]}
 		payloadxx =  {'id':0, 'jsonrpc':'2.0','session' : None,'method': 'exec','params': {'url':  '/sys/login/user', 'data': {'passwd': fortiapiuser, 'user': fortiapipass} } }
 		payload =  {'id':0, 'jsonrpc':'2.0','session' : None,'method': 'exec','params': execparams}
@@ -165,9 +153,13 @@ class FortiSession():
 		jdata = json.dumps({ 'Query' : query }).encode("utf-8")
 		response = self.session.post(url, data=jdata)
 
-class MDATPSession(BaseSesssion):
+class QuerySession(BaseSesssion):
 
 	def __init__(self, name="MDATP"):
+		"""
+		params: 
+		name: "MDE", "M365D", "MDATP"
+		"""
 		super().__init__(self)
 		self.name = name	
 
@@ -181,7 +173,8 @@ class MDATPSession(BaseSesssion):
 			except Exception as e:
 				raise MDATPException(e)
 		try:
-			rawmdatp_data = mdatp.MDATP.list_alerts()
+			# rawmdatp_data = mdatp.MDATP.list_alerts()
+			rawmdatp_data = mdatp.MDATP.list_alertsinfo()
 			logger.debug(f'{self} rawmdatp_data {type(rawmdatp_data)}')
 		except Exception as e:
 			raise MDATPException(e)
@@ -195,7 +188,7 @@ class DefenderSesssion(BaseSesssion):
 		super().__init__(self)
 		self.name = name
 
-	def update_session(self):
+	def update_session(self, uri=RESOURCEAPPIDURI):
 		try:
 			token = get_aad_token()
 		except TokenException as e:
@@ -207,9 +200,56 @@ class DefenderSesssion(BaseSesssion):
 			'Content-Type': 'application/json',
 			'Accept': 'application/json',
 			'Authorization': "Bearer " + token,
-			'authorization_uri': RESOURCEAPPIDURI
+			'authorization_uri': uri
 		})
 		self.authenticated = True
+
+	def get_incidents(self, pageSize=50, alertStatus=['New','InProgress'], severity=[256,128,64], pageIndex=1, lookBackInDays=3):
+		tenant_id = os.environ.get('defenderTenantID')
+		referer = 'https://security.microsoft.com/incidents'
+		session, token = get_aad_session(AppIdUri='https://security.microsoft.com')
+		session.headers.update(
+			{
+				'Host' : 'security.microsoft.com',
+				'User-Agent' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/114.0',
+				'tenant-id' : tenant_id,
+				'X-tid' : tenant_id,
+				'X-ClientPage' : 'incidents@wicd-ine',
+				'Referer' : referer,
+				'Origin' : referer,
+				'Accept' : 'application/json, text/plain, */*',
+				'Content-Type' : 'application/json',
+				'Authorization': "Bearer " + token,
+				'authority': 'security.microsoft.com',
+				'request-context': 'appId=cid-v1:9f356be6-73bf-45f7-9a98-a86fc98ec84f', # appid ?
+				# 'cookie' : session.cookies()
+			})
+		# get
+		# geturl = 'https://security.microsoft.com/apiproxy/mtp/incidentDashboard/Dashboard/ActiveIncidentsSummary'
+		# post
+		posturl = 'https://security.microsoft.com/apiproxy/mtp/incidentQueue/incidents/alerts'
+		# https://security.microsoft.com/apiproxy/mtp/incidentQueue/incidents/filters?name=systemTag%2CcustomTag%2CalertPolicyIds
+		# https://security.microsoft.com/apiproxy/mtp/incidentQueue/incidents/alerts
+		# data-raw '{"isDexLicense":false,"isStatusFilterEnable":false,"pageSize":40,"isMultipleIncidents":true,"alertStatus":["New","InProgress"],"severity":[256,128,64],"lookBackInDays":"7","pageIndex":1}'
+		json_data = {
+				'isStatusFilterEnable': 'false',
+				'isDexLicense': 'false',
+				'pageSize': pageSize,
+				'lookBackInDays': f'"{lookBackInDays}"',
+				'isMultipleIncidents': True,
+				'alertStatus': alertStatus,
+				'severity': severity,
+				'pageIndex': pageIndex,
+				}
+		try:
+			response = session.post(posturl, json=json_data, allow_redirects=False)
+		except TooManyRedirects as e:
+			logger.warning(f'{e} {type(e)} url: {posturl} data: {json_data} headers: {self.session.headers}')
+			response = {}
+		except Exception as e:
+			logger.error(f'{e} {type(e)} url: {posturl} data: {json_data} headers: {self.session.headers}')
+			response = {}
+		return response
 
 	def get_data(self, api_item:str='alerts', status:str='new', severity:str='High'):
 		"""
@@ -251,8 +291,9 @@ class DefenderSesssion(BaseSesssion):
 				if len(records) >= MAX_RECORDS:
 					logger.warning(f'{self} Reached MAX_RECORDS={MAX_RECORDS} records = {len(records)}')
 					hasnext = False
-		self.data = records
-		return self.result
+		# self.data = records
+		logger.info(f'{self} records={len(records)}')
+		return records
 
 class CloudappsecuritySession(BaseSesssion):
 
